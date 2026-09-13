@@ -134,6 +134,21 @@ describe('the launch-process half of the generation model', () => {
     expect(existsSync(join(profile, 'node_modules', 'widget'))).toBe(false)
   })
 
+  it('removes a missing desired generation before reprojecting the normal profile', async () => {
+    const home = await freshHome()
+    await ensureRegistryDirectories(home)
+    await fakeGeneration(home, 'keep+1+aaaa', 'keep')
+    await writeDesired(home, [
+      'dsh-better-sidebar+0.19.1+01af6b140d71',
+      'keep+1+aaaa'
+    ])
+
+    expect(await uninstallGenerationPlugin(home, 'dsh-better-sidebar', silent)).toBe(true)
+    expect(await readDesired(home)).toEqual(['keep+1+aaaa'])
+
+    await expect(prepareGenerationsForLaunch(home, silent)).resolves.toBeUndefined()
+  })
+
   it('never projects dshmarket, whatever desired.json says', async () => {
     const home = await freshHome()
     await ensureRegistryDirectories(home)

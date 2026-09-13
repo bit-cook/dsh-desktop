@@ -61,14 +61,33 @@ export function buildVersionIndex(archiveDirNames) {
   return { generatedAt: new Date().toISOString(), versions }
 }
 
+/** Preserve the published catalog and its explicitly selected stable history. */
+export function mergeVersionIndex(current, version, stableHistory = 'keep') {
+  if (!SEMVER.test(version) || !['keep', 'retain', 'unpin'].includes(stableHistory)) {
+    throw new Error('Invalid version or stable-history action')
+  }
+  if (!current || !Array.isArray(current.versions) || current.versions.some((entry) =>
+    !entry || typeof entry.version !== 'string' || !SEMVER.test(entry.version) ||
+    (entry.stableHistory !== undefined && typeof entry.stableHistory !== 'boolean')
+  )) throw new Error('Invalid existing version index; refusing to replace history')
+  const stable = new Set(current.versions.filter((entry) => entry.stableHistory === true).map((entry) => entry.version))
+  if (stableHistory === 'retain') stable.add(version)
+  if (stableHistory === 'unpin') stable.delete(version)
+  const index = buildVersionIndex([...current.versions.map((entry) => entry.version), version])
+  for (const entry of index.versions) {
+    if (stable.has(entry.version)) entry.stableHistory = true
+  }
+  return index
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [namesFile, outFile] = process.argv.slice(2)
+  const [namesFile, outFile, version, stableHistory = 'keep'] = process.argv.slice(2)
   if (!namesFile || !outFile) {
-    console.error('Usage: node scripts/build-version-index.mjs <names-json-file> <out-file>')
+    console.error('Usage: node scripts/build-version-index.mjs <names-or-current-index-json> <out-file> [version] [keep|retain|unpin]')
     process.exit(1)
   }
   const names = JSON.parse(await readFile(namesFile, 'utf8'))
-  const index = buildVersionIndex(names)
+  const index = version ? mergeVersionIndex(names, version, stableHistory) : buildVersionIndex(names)
   await writeFile(outFile, `${JSON.stringify(index, null, 2)}\n`, 'utf8')
   console.log(`Wrote ${outFile} with ${index.versions.length} versions.`)
 }

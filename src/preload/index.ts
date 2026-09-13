@@ -5,6 +5,7 @@ import {
   isUpdateDismissed,
   shouldShowUpdate,
   updateHeadline,
+  visibleHistoryReleases,
   type UpdateLocale
 } from './update-view'
 import { isPluginLoadError } from './plugin-error-view'
@@ -771,8 +772,9 @@ function appendAboutVersionGroup(
   group.appendChild(label)
 
   const buttonsRow = element('div', 'version-buttons')
-  for (const release of releases.slice(0, 12)) {
-    const pick = button(`v${release.version}`, 'version-tag-btn')
+  for (const release of visibleHistoryReleases(releases)) {
+    const stableLabel = release.stableHistory === true ? (zh ? ' · 稳定历史版' : ' · Stable history') : ''
+    const pick = button(`v${release.version}${stableLabel}`, 'version-tag-btn')
     pick.disabled = installingVersion !== null
     pick.addEventListener('click', () => {
       selectVersionFromAbout(release, currentVersion, zh)

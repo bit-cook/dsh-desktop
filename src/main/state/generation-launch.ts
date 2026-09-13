@@ -97,9 +97,9 @@ export async function uninstallGenerationPlugin(
   pluginName: string,
   note: Note
 ): Promise<boolean> {
-  if (!(await isGenerationPlugin(dshHome, pluginName).catch(() => false))) return false
   try {
     const removed = await disableGeneration(dshHome, pluginName)
+    if (!removed) return false
     await projectGenerations(dshHome)
     const stillEnabled = (await resolveEnabledGenerations(dshHome)).has(pluginName)
     if (stillEnabled) {

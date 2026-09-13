@@ -1,9 +1,7 @@
-name: Backfill release archive
+name: Manage stable release history
 
-# One-shot: copy an existing GitHub Release into the ModelScope rollback
-# archive (releases/archive/<version>/) and rebuild releases/versions.json,
-# so a version published before the versioned-update pipeline landed can be
-# offered as a rollback target. Mirrors the archive+index step of `publish`.
+# Select stable rollback versions using existing signed GitHub Release assets.
+# Shares the catalog lock and fail-closed publisher with normal releases.
 
 on:
   workflow_dispatch:
@@ -12,12 +10,21 @@ on:
         description: Existing release tag to backfill (e.g. v0.6.3)
         required: true
         type: string
+      stable_history:
+        description: retain = mark as stable history; unpin = remove mark; keep = archive only
+        required: true
+        default: retain
+        type: choice
+        options:
+          - retain
+          - unpin
+          - keep
 
 permissions:
   contents: read
 
 concurrency:
-  group: backfill-archive
+  group: desktop-version-catalog
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci --ignore-scripts
       - name: Download the release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,62 +48,20 @@ jobs:
             --dir release-assets \
             --pattern '*'
           ls -l release-assets
+      - name: Verify historical release assets
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/verify-release-assets.mjs release-assets "${RELEASE_TAG#v}"
       - name: Archive to ModelScope and rebuild the version index
         env:
           MODELSCOPE_TOKEN: ${{ secrets.MODELSCOPE_TOKEN }}
           MODELSCOPE_REPO_ID: alexyaojin/dsh-desktop
           RELEASE_TAG: ${{ inputs.tag }}
+          STABLE_HISTORY: ${{ inputs.stable_history }}
         run: |
           set -euo pipefail
           test -n "$MODELSCOPE_TOKEN" || { echo "::error::Missing secret MODELSCOPE_TOKEN"; exit 1; }
           python3 -m venv "$RUNNER_TEMP/ms-env"
           "$RUNNER_TEMP/ms-env/bin/pip" install -q modelscope
-          "$RUNNER_TEMP/ms-env/bin/python3" <<'PY'
-          import json, os, pathlib, subprocess, tempfile, urllib.request
-          from modelscope.hub.api import HubApi
-
-          api = HubApi()
-          token = os.environ["MODELSCOPE_TOKEN"]
-          repo_id = os.environ["MODELSCOPE_REPO_ID"]
-          tag = os.environ["RELEASE_TAG"]
-          version = tag[1:] if tag.startswith("v") else tag
-          src = pathlib.Path("release-assets")
-
-          api.upload_folder(
-              repo_id=repo_id,
-              folder_path=str(src),
-              path_in_repo=f"releases/archive/{version}",
-              commit_message=f"Backfill archive {tag}",
-              token=token,
-          )
-          print(f"✅ Archived {src} -> {repo_id}/releases/archive/{version}")
-
-          known = {version}
-          try:
-              with urllib.request.urlopen(
-                  "https://dshdesktop.com/updates/versions.json", timeout=15
-              ) as response:
-                  for entry in json.load(response).get("versions", []):
-                      name = entry.get("version")
-                      if isinstance(name, str) and name:
-                          known.add(name)
-          except Exception as error:
-              print(f"⚠️ Could not read existing version index: {error}")
-
-          with tempfile.TemporaryDirectory() as work:
-              names_file = pathlib.Path(work) / "names.json"
-              index_file = pathlib.Path(work) / "versions.json"
-              names_file.write_text(json.dumps(sorted(known)))
-              subprocess.run(
-                  ["node", "scripts/build-version-index.mjs", str(names_file), str(index_file)],
-                  check=True,
-              )
-              api.upload_file(
-                  path_or_fileobj=str(index_file),
-                  path_in_repo="releases/versions.json",
-                  repo_id=repo_id,
-                  commit_message=f"Version index after backfilling {tag}",
-                  token=token,
-              )
-          print("✅ Rebuilt releases/versions.json")
-          PY
+          "$RUNNER_TEMP/ms-env/bin/python3" .github/scripts/publish_release_archive.py \
+            --tag "$RELEASE_TAG" --assets release-assets --stable-history "$STABLE_HISTORY"

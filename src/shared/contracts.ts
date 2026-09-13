@@ -44,4 +44,5 @@ export interface AvailableRelease {
   version: string
   tag: string
   archiveUrl: string
+  stableHistory?: boolean
 }

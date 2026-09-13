@@ -5,6 +5,7 @@ import {
   isUpdateDismissed,
   shouldShowUpdate,
   updateHeadline,
+  visibleHistoryReleases,
   updateMessage
 } from '../src/preload/update-view'
 
@@ -117,3 +118,11 @@ describe('about dialog and version selection wiring', () => {
   })
 })
 
+
+
+it('keeps selected stable history visible after more than twelve newer versions', () => {
+  const recent = Array.from({ length: 15 }, (_, i) => ({ version: `2.0.${15 - i}`, tag: `v2.0.${15 - i}`, archiveUrl: 'https://example.com/' }))
+  const stable = { version: '1.0.0', tag: 'v1.0.0', archiveUrl: 'https://example.com/1.0.0/', stableHistory: true }
+  const visible = visibleHistoryReleases([...recent, stable])
+  expect(visible).toEqual([stable, ...recent.slice(0, 12)])
+})

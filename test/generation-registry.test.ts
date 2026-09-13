@@ -284,4 +284,17 @@ describe('the plugin generation registry', () => {
     // disabling something that is not desired is a no-op
     expect(await disableGeneration(home, '@nanmicoder/dsh-agent-teams')).toBe(false)
   })
+
+  it('clears a desired pointer for a generation whose directory disappeared', async () => {
+    const home = await freshHome()
+    await ensureRegistryDirectories(home)
+    await fakeGeneration(home, 'other+1+aaaa', 'other', '1.0.0')
+    await writeDesired(home, [
+      'dsh-better-sidebar+0.19.1+01af6b140d71',
+      'other+1+aaaa'
+    ])
+
+    expect(await disableGeneration(home, 'dsh-better-sidebar')).toBe(true)
+    expect(await readDesired(home)).toEqual(['other+1+aaaa'])
+  })
 })

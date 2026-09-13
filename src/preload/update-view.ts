@@ -1,4 +1,4 @@
-import type { UpdateStatus } from '../shared/contracts'
+import type { AvailableRelease, UpdateStatus } from '../shared/contracts'
 
 export type UpdateLocale = 'en' | 'zh'
 
@@ -125,4 +125,12 @@ export function updateMessage(status: UpdateStatus, locale: UpdateLocale): strin
     case 'idle':
       return ''
   }
+}
+
+/** Keep every explicitly retained release visible beyond the recent-version limit. */
+export function visibleHistoryReleases(releases: AvailableRelease[]): AvailableRelease[] {
+  return [
+    ...releases.filter((release) => release.stableHistory === true),
+    ...releases.filter((release) => release.stableHistory !== true).slice(0, 12)
+  ]
 }

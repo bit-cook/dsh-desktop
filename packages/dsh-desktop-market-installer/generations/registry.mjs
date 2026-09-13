@@ -92,9 +92,14 @@ export async function ensureRegistryDirectories(dshHome) {
 export function generationId(pluginName, version, lockfileText) {
   assertSafePackageName(pluginName)
   assertSafeVersion(version)
-  const safeName = pluginName.replace(/^@/u, '').replace(/[/\\]/gu, '+')
+  const safeName = generationIdName(pluginName)
   const digest = createHash('sha256').update(lockfileText).digest('hex').slice(0, 12)
   return `${safeName}+${version}+${digest}`
+}
+
+function generationIdName(pluginName) {
+  assertSafePackageName(pluginName)
+  return pluginName.replace(/^@/u, '').replace(/[/\\]/gu, '+')
 }
 
 async function readPointer(path) {
@@ -290,7 +295,14 @@ export async function writeDesired(dshHome, generationIds) {
 export async function disableGeneration(dshHome, pluginName) {
   const [desired, generations] = await Promise.all([readDesired(dshHome), listGenerations(dshHome)])
   const byId = new Map(generations.map((generation) => [generation.id, generation]))
-  const next = desired.filter((id) => byId.get(id)?.pluginName !== pluginName)
+  // A crash or an external cleanup can remove the immutable directory before
+  // its desired pointer. The package name remains encoded at the beginning of
+  // the ID, so recovery can safely disable this exact plugin without guessing
+  // from a version or touching a sibling generation.
+  const missingIdPrefix = `${generationIdName(pluginName)}+`
+  const next = desired.filter(
+    (id) => byId.get(id)?.pluginName !== pluginName && !id.startsWith(missingIdPrefix)
+  )
   if (next.length === desired.length) return false
   await writeDesired(dshHome, next)
   return true

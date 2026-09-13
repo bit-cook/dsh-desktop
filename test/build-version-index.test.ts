@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildVersionIndex } from '../scripts/build-version-index.mjs'
+import { buildVersionIndex, mergeVersionIndex } from '../scripts/build-version-index.mjs'
 
 const execFile = promisify(execFileCallback)
 const projectRoot = path.resolve(import.meta.dirname, '..')
@@ -65,5 +65,19 @@ describe('buildVersionIndex', () => {
       '1.0.0'
     ])
     expect(typeof written.generatedAt).toBe('string')
+  })
+})
+
+
+describe('stable history selection', () => {
+  it('preserves all prior versions and explicitly retained selections across releases', () => {
+    const selected = mergeVersionIndex(buildVersionIndex(['1.0.0', '1.1.0']), '1.0.0', 'retain')
+    const next = mergeVersionIndex(selected, '2.0.0')
+    expect(next.versions.map(entry => entry.version)).toEqual(['2.0.0', '1.1.0', '1.0.0'])
+    expect(next.versions.find(entry => entry.version === '1.0.0')?.stableHistory).toBe(true)
+    expect(next.versions[0]?.stableHistory).toBeUndefined()
+    const unpinned = mergeVersionIndex(next, '1.0.0', 'unpin')
+    expect(unpinned.versions).toHaveLength(3)
+    expect(unpinned.versions[2]?.stableHistory).toBeUndefined()
   })
 })

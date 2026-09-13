@@ -535,9 +535,12 @@ describe('rollback catalog publication', () => {
       path.join(projectRoot, '.github/workflows/release.yml'),
       'utf8'
     )
-    expect(yml).toContain('releases/archive/')
-    expect(yml).toContain('scripts/build-version-index.mjs')
-    expect(yml).toContain('releases/versions.json')
+    expect(yml).toContain('.github/scripts/publish_release_archive.py')
+    expect(yml).toContain('--publish-latest')
+    expect(yml).toContain('group: desktop-version-catalog')
+    const backfill = await readFile(path.join(projectRoot, '.github/workflows/backfill-archive.yml'), 'utf8')
+    expect(backfill).toContain('group: desktop-version-catalog')
+    expect(backfill).toContain('--stable-history "$STABLE_HISTORY"')
   })
 })
 

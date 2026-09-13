@@ -1,5 +1,6 @@
 import { initializeDesktopService, desktopDiagnostics } from './desktop-service'
 import { checkBlockingPluginUpdates, selectPluginRecoveryTarget, PluginRecoveryEvidence, planPluginRecovery, runPluginRecoveryPlan, type PluginRecoveryCheck } from './plugin-recovery-market'
+import { selectAutomaticPluginRecovery } from './plugin-auto-recovery'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -84,6 +85,7 @@ import {
   rollBackMigration
 } from './state/generation-migration'
 import { runProfileStartupMaintenance } from './state/profile-startup-maintenance'
+import { migrateProfileSchema } from './state/profile-schema-migrator'
 import { cleanupPluginOwnedComponents } from './state/plugin-component-cleanup'
 import {
   cleanupVerifiedRemovalBackup,
@@ -1203,7 +1205,20 @@ function launchHarness(): Promise<void> {
     // a restart still has the previous one running: start() stops it, but that
     // is after maintenance. Stopping here owns that mutation window.
     await runtime.stop()
-    runtime.note('[desktop] previous Harness stopped; starting profile maintenance')
+    runtime.note('[desktop] previous Harness stopped; reconciling profile schema')
+    try {
+      const schemaReport = await migrateProfileSchema(dshHome, (line) => runtime.note(line))
+      for (const warning of schemaReport.warnings) {
+        runtime.note(`[desktop] profile schema warning: ${warning}`)
+      }
+    } catch (error) {
+      runtime.note(
+        `[desktop] profile schema reconciliation failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    }
+    runtime.note('[desktop] starting profile maintenance')
     const maintenance = await runProfileStartupMaintenance({
       note: (line) => runtime.note(line),
       recoverInterruptedMigration: () =>
@@ -1734,6 +1749,39 @@ async function showPluginRecovery(options?: {
       appendPluginRecoveryDetectionLog(detection.plugins)
       waitForRendererEvidence = false
       if (applyPendingFrontendEvidence()) continue
+
+      // A loader-provided owner is already checked against the current Profile
+      // by detectPluginRecovery. For one third-party root, quarantine it and
+      // rebuild before showing Recovery: a bad optional plugin must not hold
+      // the application hostage. Any ambiguity still requires Safe Mode.
+      const automaticTarget = selectAutomaticPluginRecovery({
+        startupFailures: followRendererLogs ? undefined : snapshot.pluginFailures,
+        profilePlugins: detection.plugins,
+        removedPlugins,
+        followsRendererLogs: followRendererLogs
+      })
+      if (automaticTarget) {
+        runtime.note(`[plugin-recovery] automatically isolating ${automaticTarget} from structured startup evidence`)
+        await runtime.stop()
+        const removal = await removeProfilePluginCompletely(dshHome, automaticTarget, 'plugin-auto-recovery')
+        if (removal.removed && !removal.pending) {
+          if (!removedPlugins.includes(automaticTarget)) removedPlugins.push(automaticTarget)
+          await launchWithFreshEvidence()
+          // launchHarness can return while the child is still transitioning to
+          // ready. Leave this recovery view now; a fresh failure notification
+          // will open a new recovery session, while a successful start resumes
+          // the normal window without ever displaying this page.
+          if (runtime.snapshot().phase !== 'failed') {
+            if (runtime.snapshot().phase === 'ready') schedulePluginRecoverySessionReset()
+            return
+          }
+          // The next loop displays recovery for the new, independent failure.
+          continue
+        }
+        notice = isChinese
+          ? `${automaticTarget} 自动隔离未完成，已保留恢复材料。请在安全模式中继续处理。`
+          : `Automatic isolation of ${automaticTarget} did not finish; recovery material was retained. Continue in Safe Mode.`
+      }
 
       const runtimeVersion =
         (await readBundledDshVersion(join(app.getAppPath(), 'node_modules'))) || '0.1.2-alpha.1'
