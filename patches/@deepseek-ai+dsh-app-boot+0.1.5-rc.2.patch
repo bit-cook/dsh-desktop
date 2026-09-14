@@ -1,8 +1,7 @@
 diff --git a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
-index 8dd94c6..0dd37d2 100644
 --- a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
-@@ -830,6 +830,19 @@ function resolveBundleDir(binName, packageName, installAnchor, profileDir) {
+@@ -830,6 +830,19 @@
  	}
  	throw new Error(`${binName}: cannot resolve profile bundle ${JSON.stringify(packageName)} from the dsh installation or ${profileDir}; run 'dsh plugin --profile ${basename(profileDir)} install' if its dependency is not installed`);
  }
@@ -22,7 +21,7 @@ index 8dd94c6..0dd37d2 100644
  /**
  * Load an already initialized profile directory without resolving it through
  * the shared Harness home. This is used by application-owned profiles whose
-@@ -847,16 +860,26 @@ function loadProfileDirectory(binName, dir, installAnchor, options = {}) {
+@@ -847,16 +860,26 @@
  	if (rawPatchReload !== void 0 && rawPatchReload !== "live" && rawPatchReload !== "startup") throw new Error(`${binName}: profile manifest ${join(dir, "package.json")} dsh.profile.patchReload must be "live" or "startup"`);
  	const patchReload = rawPatchReload ?? "live";
  	const layers = bundles.map((packageName) => {
@@ -59,7 +58,7 @@ index 8dd94c6..0dd37d2 100644
  	});
  	const patchPath = join(dir, PROFILE_PATCH_FILENAME);
  	const patches = options.userLayer !== false && existsSync(patchPath) ? loadOverlayPatches(binName, patchPath) : [];
-@@ -1466,6 +1489,7 @@ async function assertEntriesActivated(ctx, binName) {
+@@ -1466,6 +1489,7 @@
  	assertEntriesLoaded(ctx, binName);
  	const failures = [];
  	const rejectionReasons = [];
@@ -67,7 +66,7 @@ index 8dd94c6..0dd37d2 100644
  	for (const entry of ctx.loader.entries()) {
  		const fiber = entry.fiber;
  		if (fiber === void 0 || entry.disabled) continue;
-@@ -1476,6 +1500,7 @@ async function assertEntriesActivated(ctx, binName) {
+@@ -1476,6 +1500,7 @@
  				await fiber.await();
  			} catch (error) {
  				rejectionReasons.push(error);
@@ -75,7 +74,7 @@ index 8dd94c6..0dd37d2 100644
  				failures.push(`${entry.options.name}: ${formatActivationError(error)}`);
  			}
  			continue;
-@@ -1485,11 +1510,12 @@ async function assertEntriesActivated(ctx, binName) {
+@@ -1485,11 +1510,12 @@
  			const subject = missing.length === 1 ? "service" : "services";
  			failures.push(`${entry.options.name}: pending (waiting for ${subject}: ${missing.join(", ") || "unknown"})`);
  		} else failures.push(`${entry.options.name}: fiber state ${String(state)}`);
@@ -89,7 +88,7 @@ index 8dd94c6..0dd37d2 100644
  	}
  }
  /**
-@@ -1537,7 +1563,11 @@ async function boot(binName, absoluteConfigPath, patches, prepare, bareModuleBas
+@@ -1537,7 +1563,11 @@
  		await assertEntriesActivated(ctx, binName);
  		return ctx;
  	} catch (cause) {
