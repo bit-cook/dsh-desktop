@@ -394,6 +394,13 @@ contextBridge.exposeInMainWorld(
 )
 
 contextBridge.exposeInMainWorld(
+  'dshWebImport',
+  Object.freeze({
+    action: (action: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('web-import:action', action)
+  })
+)
+
+contextBridge.exposeInMainWorld(
   'dshSafeMode',
   Object.freeze({
     action: (
