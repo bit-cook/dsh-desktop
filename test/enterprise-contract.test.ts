@@ -9,6 +9,7 @@ import {
   parseToken,
   parseUsage
 } from '../packages/dsh-desktop-enterprise/contract.js'
+import { apply as applyEnterprise } from '../packages/dsh-desktop-enterprise/index.js'
 import { createMockEnterpriseServer } from '../scripts/mock-bisheng-enterprise.mjs'
 
 let service: ReturnType<typeof createMockEnterpriseServer> | undefined
@@ -72,6 +73,37 @@ async function issueSession(origin: string) {
 }
 
 describe('BiSheng compatible client API mock', () => {
+  it('registers every local enterprise route with buffered request bodies', () => {
+    const routes: Array<{ path: string, methods: string[], requestBody?: string }> = []
+    const ctx = {
+      connection: {
+        fetch: {
+          register(route: { path: string, methods: string[], requestBody?: string }) {
+            routes.push(route)
+            return () => undefined
+          }
+        }
+      },
+      llm: { registerAdapter: () => () => undefined },
+      effect: (callback: () => unknown) => callback(),
+      provide: () => undefined
+    }
+
+    applyEnterprise(ctx as never)
+
+    expect(routes.map(route => route.path)).toEqual([
+      '/api/enterprise.state',
+      '/api/enterprise.base.inspect',
+      '/api/enterprise.login.start',
+      '/api/enterprise.login.manual',
+      '/api/enterprise.deep-link.inspect',
+      '/api/enterprise.deep-link.confirm',
+      '/api/enterprise.refresh',
+      '/api/enterprise.logout'
+    ])
+    expect(routes.every(route => route.requestBody === 'buffered')).toBe(true)
+  })
+
   it('accepts supported config versions while preserving the server version', () => {
     expect(parseConfig({
       enabled: true,

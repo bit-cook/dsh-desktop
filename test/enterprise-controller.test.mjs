@@ -63,8 +63,12 @@ describe('enterprise controller', () => {
     let registrationCount = 0
     let activationCount = 0
     let enterpriseAdapter
+    let publishedCatalog
     const registration = () => { registered = false }
-    registration.replace = (routes) => { registered = routes.length > 0 }
+    registration.replace = (routes) => {
+      registered = routes.length > 0
+      if (registered) publishedCatalog = enterpriseAdapter.listModels('bisheng-enterprise')
+    }
     const ctx = {
       llm: {
         registerAdapter(routes, adapter) {
@@ -72,6 +76,7 @@ describe('enterprise controller', () => {
           registrationCount += 1
           registered = true
           enterpriseAdapter = adapter
+          publishedCatalog = adapter.listModels('bisheng-enterprise')
           return registration
         }
       }
@@ -118,6 +123,7 @@ describe('enterprise controller', () => {
       modelUsage: { 'bisheng:42': { source: 'live', quota_state: 'available', used: 128 } }
     })
     expect(registered).toBe(true)
+    expect(await publishedCatalog).toHaveLength(4)
     expect(registrationCount).toBe(1)
     expect(activationCount).toBe(1)
 

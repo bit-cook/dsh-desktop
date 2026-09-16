@@ -184,6 +184,7 @@ export function createEnterpriseController(ctx, options = {}) {
   const activeRequests = new Set()
 
   const adapter = new EnterpriseLlmAdapter({
+    readImage: (ref, signal) => ctx.get('attachments')?.readImageRequest(ref, { maxPixels: 4194304, maxBytes: 1048576 }, signal),
     providerName: () => session?.tenant?.name ?? 'BiSheng Enterprise',
     models: () => modelsAvailable ? models : [],
     request: (body, signal, headers) => requestChat(body, signal, headers),
@@ -204,13 +205,13 @@ export function createEnterpriseController(ctx, options = {}) {
   }
 
   const publishModels = (next) => {
+    models = next
+    modelsAvailable = true
     if (!providerRegistration) {
       providerRegistration = ctx.llm.registerAdapter([BISHENG_PROVIDER_ROUTE], adapter)
     } else {
       providerRegistration.replace([BISHENG_PROVIDER_ROUTE])
     }
-    models = next
-    modelsAvailable = true
   }
 
   const disposeProvider = () => {
@@ -767,5 +768,6 @@ export function apply(ctx) {
   registerJsonRoute(connection, LOCAL_PATHS.logout, ['POST'], (request) =>
     controller.logout(request.signal))
   ctx.effect(() => () => controller.dispose(), 'dsh-desktop-enterprise: lifecycle')
-  queueMicrotask(() => { void controller.restore() })
+  const ready = Promise.resolve().then(() => controller.restore()).catch(() => undefined)
+  ctx.provide('enterpriseModelState', { ready })
 }

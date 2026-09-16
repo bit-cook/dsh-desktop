@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
 
     function modelUsagePercentage(usage) {
       if (!usage || typeof usage.used !== 'number' || typeof usage.limit !== 'number' || usage.limit <= 0) return usageText(usage)
-      const percentage = Math.max(0, usage.used / usage.limit * 100)
+      const percentage = Math.min(100, Math.max(0, usage.used / usage.limit * 100))
       const formatted = new Intl.NumberFormat(zh ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 }).format(percentage)
       return `${formatted}%`
     }

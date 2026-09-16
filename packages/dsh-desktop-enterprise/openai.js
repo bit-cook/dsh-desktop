@@ -17,7 +17,7 @@ function textContent(blocks) {
 
 function assertTextOnly(blocks) {
   if (contentHasImage(blocks)) {
-    throw new LlmError('BiSheng DSH models do not support image input in this release.', 'UNSUPPORTED_CONTENT')
+    throw new LlmError('Image input is unavailable for this model or message role.', 'UNSUPPORTED_CONTENT')
   }
 }
 
@@ -42,11 +42,11 @@ function assistantMessage(message, includeReasoning) {
   }
 }
 
-export function serializeEnterpriseRequest(options, model) {
+export function serializeEnterpriseRequest(options, model, images = new Map()) {
   const messages = []
   if (options.system !== undefined) messages.push({ role: 'system', content: options.system })
   for (const message of options.messages) {
-    assertTextOnly(message.content)
+    if (!model.capabilities.vision || message.role !== 'user') assertTextOnly(message.content)
     if (message.role === 'system') {
       messages.push({ role: 'system', content: textContent(message.content) })
       continue
@@ -57,7 +57,15 @@ export function serializeEnterpriseRequest(options, model) {
     }
     const regularText = textContent(message.content)
     const toolResults = message.content.filter((block) => block.type === 'tool-result')
-    if (regularText || toolResults.length === 0) messages.push({ role: 'user', content: regularText })
+    const parts = message.content.filter(block => block.type === 'text' || block.type === 'image')
+    const hasImages = parts.some(block => block.type === 'image')
+    const content = hasImages ? parts.map(block => {
+      if (block.type === 'text') return block
+      const image = images.get(block.attachment.attachmentId)
+      if (!image) throw new LlmError('Image attachment is unavailable.', 'UNSUPPORTED_CONTENT')
+      return { type: 'image_url', image_url: { url: image } }
+    }) : regularText
+    if (hasImages || regularText || toolResults.length === 0) messages.push({ role: 'user', content })
     for (const result of toolResults) {
       assertTextOnly(result.content)
       messages.push({
@@ -227,7 +235,7 @@ export class EnterpriseLlmAdapter extends LlmAdapter {
       provider,
       id: model.id,
       name: model.display_name,
-      inputModalities: ['text']
+      inputModalities: model.capabilities.vision ? ['text', 'image'] : ['text']
     })))
   }
 
@@ -238,15 +246,33 @@ export class EnterpriseLlmAdapter extends LlmAdapter {
       provider,
       id,
       name: model.display_name,
-      inputModalities: ['text']
+      inputModalities: model.capabilities.vision ? ['text', 'image'] : ['text']
     })
   }
 
   async *stream(options) {
     const model = this.options.models().find((candidate) => candidate.id === options.model)
     if (!model) throw new LlmError(`BiSheng provider has no authorized model "${options.model}".`, 'UNKNOWN_MODEL')
+    const images = new Map()
+    let imageCount = 0
+    let imageBytes = 0
+    for (const message of options.messages) {
+      if (!model.capabilities.vision || message.role !== 'user') assertTextOnly(message.content)
+      for (const block of message.content) {
+        if (block.type === 'tool-result') assertTextOnly(block.content)
+        if (block.type !== 'image') continue
+        if (++imageCount > 10) throw new LlmError('Use at most ten images per request.', 'UNSUPPORTED_CONTENT')
+        const image = await this.options.readImage?.(block.attachment, options.signal)
+        if (!image) throw new LlmError('Image attachment is unavailable.', 'UNSUPPORTED_CONTENT')
+        imageBytes += image.data.byteLength
+        if (image.data.byteLength > 5 * 1024 * 1024 || imageBytes > 20 * 1024 * 1024) {
+          throw new LlmError('Image request exceeds the size limit.', 'UNSUPPORTED_CONTENT')
+        }
+        images.set(block.attachment.attachmentId, `data:${image.mediaType};base64,${Buffer.from(image.data).toString('base64')}`)
+      }
+    }
     const response = await this.options.request(
-      serializeEnterpriseRequest(options, model),
+      serializeEnterpriseRequest(options, model, images),
       options.signal,
       attributionHeaders()
     )

@@ -11,7 +11,7 @@ export interface EnterpriseModel {
   created: number
   owned_by: string
   display_name: string
-  capabilities: { streaming: boolean; tools: boolean; reasoning_content: boolean }
+  capabilities: { streaming: boolean; tools: boolean; reasoning_content: boolean; vision?: boolean }
 }
 
 export declare class EnterpriseApiError extends Error {

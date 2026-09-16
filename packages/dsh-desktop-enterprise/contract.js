@@ -147,7 +147,8 @@ export function parseModels(value) {
     if (
       typeof entry.capabilities.streaming !== 'boolean' ||
       typeof entry.capabilities.tools !== 'boolean' ||
-      typeof entry.capabilities.reasoning_content !== 'boolean'
+      typeof entry.capabilities.reasoning_content !== 'boolean' ||
+      (entry.capabilities.vision !== undefined && typeof entry.capabilities.vision !== 'boolean')
     ) {
       throw new Error(`BiSheng model "${id}" has invalid capabilities.`)
     }
@@ -160,6 +161,7 @@ export function parseModels(value) {
       capabilities: {
         streaming: entry.capabilities.streaming,
         tools: entry.capabilities.tools,
+        vision: entry.capabilities.vision ?? false,
         reasoning_content: entry.capabilities.reasoning_content
       }
     }
