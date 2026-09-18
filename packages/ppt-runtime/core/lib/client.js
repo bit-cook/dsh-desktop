@@ -134,6 +134,17 @@ window.__ModuleLoader__.load({
 					error
 				}));
 			}
+			setTemplateState(sessionId, next) {
+                this.update(sessionId, current => ({
+                    ...current,
+                    templates: next.templates,
+                    selectedId: next.templates.some(template => template.id === next.selectedTemplateId) ? next.selectedTemplateId : null,
+                    activeMode: next.presentationMode ?? current.activeMode,
+                    notice: next.templateMigration?.reason ?? null,
+                    loading: false,
+                    error: ""
+                }));
+            }
 			setTemplates(sessionId, templates) {
 				this.update(sessionId, (current) => ({
 					...current,
@@ -181,6 +192,7 @@ window.__ModuleLoader__.load({
 			};
 		}
 		function templateCategory(template) {
+            if (template.origin === "personal") return "personal";
 			if (template.origin === "extracted") return "custom";
 			return template.category ?? "business";
 		}
@@ -188,10 +200,10 @@ window.__ModuleLoader__.load({
 			return template.source?.visualGrammar ?? "custom";
 		}
 		function templatePreviewPages(template) {
-			return CURATED_TEMPLATE_PREVIEWS[template.id]?.length ?? FALLBACK_TEMPLATE_PREVIEW_PAGE_COUNT;
+			return (template.previewImages ?? CURATED_TEMPLATE_PREVIEWS[template.id])?.length ?? FALLBACK_TEMPLATE_PREVIEW_PAGE_COUNT;
 		}
 		function TemplatePreview({ template, page = 0 }) {
-			const previewImage = CURATED_TEMPLATE_PREVIEWS[template.id]?.[page];
+			const previewImage = (template.previewImages ?? CURATED_TEMPLATE_PREVIEWS[template.id])?.[page];
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				className: OfficePptHero_module_css_default.preview,
 				"data-page": page,
@@ -351,6 +363,7 @@ window.__ModuleLoader__.load({
 						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 							className: OfficePptHero_module_css_default.templateName,
+							title: template.name,
 							children: template.name
 						})
 					]
@@ -471,6 +484,7 @@ window.__ModuleLoader__.load({
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(OfficePptInputAccessory, { ...props });
 		}
 		/** PPT option and template chooser shared by both Composer layouts. */
+		/* PERSONAL_TEMPLATE_MANAGER */
 		function OfficePptChooser({ client, mode, sessionId, t, placement, loadTemplates = true }) {
 			const state = useMode(mode, sessionId);
 			const modeRootRef = (0, react.useRef)(null);
@@ -485,13 +499,14 @@ window.__ModuleLoader__.load({
 					mode.setTemplates(sessionId, next.templates);
 					if (activeMode === null) return;
 					mode.setMode(sessionId, activeMode);
+					mode.setNotice(sessionId, next.templateMigration?.reason ?? null);
 					const selected = next.templates.find((template) => template.id === next.selectedTemplateId && templateSupportsMode(template, "ppt"));
 					if (selected === void 0) {
 						mode.deselect(sessionId, activeMode);
 						return;
 					}
 					mode.select(sessionId, selected, activeMode);
-                    mode.setNotice(sessionId, next.templateMigration?.reason === "template-retired");
+
 				}).catch((reason) => {
 					mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
 				});
@@ -543,8 +558,8 @@ window.__ModuleLoader__.load({
 				select(selected, "ppt");
 			};
 			const modeTemplates = state.templates.filter((template) => templateSupportsMode(template, "ppt"));
-			const templateCategories = ["all", ...new Set(modeTemplates.map(templateCategory))];
-			const visibleTemplates = modeTemplates.filter((template) => category === "all" || templateCategory(template) === category);
+			const templateCategories = ["all", "personal", ...new Set(modeTemplates.filter(item => item.origin !== "personal").map(templateCategory))];
+			const visibleTemplates = modeTemplates.filter((template) => category === "all" ? template.origin !== "personal" : templateCategory(template) === category);
 			(0, react.useEffect)(() => {
 				if (!templateCategories.includes(category)) setCategory("all");
 			}, [category, templateCategories]);
@@ -624,11 +639,11 @@ window.__ModuleLoader__.load({
 						className: OfficePptHero_module_css_default.templateViewport,
 						"data-office-ppt-template-viewport": "",
 						"data-native-wheel-owner": "",
-						children: [state.error !== "" && state.templates.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						children: [category === "personal" && react.createElement(PersonalTemplateManager, { key: sessionId, client, mode, sessionId, state, choose, t }), state.error !== "" && state.templates.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 							className: OfficePptHero_module_css_default.templateError,
 							role: "alert",
 							children: state.error
-						}), state.loading && state.templates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						}), category === "personal" ? null : state.loading && state.templates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 							className: OfficePptHero_module_css_default.panelState,
 							children: t("status.loading")
 						}) : state.error !== "" && state.templates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
@@ -674,7 +689,7 @@ window.__ModuleLoader__.load({
                 state.notice && state.activeMode !== null ? (0, react_jsx_runtime.jsx)("span", {
                     role: "status", "data-ppt-template-migration": "",
                     style: { fontSize: 11, color: "var(--dsw-alias-label-secondary)", maxWidth: 300 },
-                    children: props.t("templates.migrated")
+                    children: props.t(state.notice === "personal-template-deleted" ? "personal.deletedSelection" : "templates.migrated")
                 }) : null
             ] });
         }
@@ -695,7 +710,36 @@ window.__ModuleLoader__.load({
 			"templates.empty": "该分类下还没有模板",
 			"templates.loadTimeout": "模板加载超时，请重试",
 			"templates.retry": "重新加载模板",
-			"templates.category.all": "全部",
+			"templates.category.all": "内置模板",
+"templates.category.personal": "我的模板",
+"personal.deletedSelection": "已选个人模板已被删除，请重新选择。",
+"personal.upload": "上传 PPT 模板",
+"personal.create": "新建自定义模板",
+"personal.selected": "已选中",
+"personal.local": "保存在当前 Desktop · PPTX",
+"personal.fileType": "请选择 PPTX 文件",
+"personal.fileTooLarge": "个人模板 PPTX 不能超过 64 MB",
+"personal.readFailed": "文件读取失败，请重新选择",
+"personal.duplicate": "这份文件已在我的模板中，可直接选择使用",
+"personal.processing": "正在处理模板…",
+"personal.chooseFile": "重新选择 PPT",
+"personal.preview": "模板预览",
+"personal.name": "模板名称",
+"personal.previous": "上一页",
+"personal.next": "下一页",
+"personal.save": "保存模板",
+"personal.cancel": "取消",
+"personal.edit": "编辑模板",
+"personal.editTitle": "编辑自定义模板",
+"personal.description": "模板描述",
+"personal.descriptionPlaceholder": "描述模板的风格或适用场景（选填）",
+"personal.update": "保存修改",
+"personal.close": "关闭",
+"personal.deleteTitle": "删除模板",
+"personal.rename": "重命名",
+"personal.delete": "删除",
+"personal.deleteHint": "删除模板后，已生成的文件继续保留。",
+"personal.confirmDelete": "确认删除",
 			"templates.category.custom": "自定义",
 			"templates.category.business": "商务",
 			"templates.category.strategy": "策略",
@@ -759,7 +803,36 @@ window.__ModuleLoader__.load({
 			"templates.empty": "No templates in this category",
 			"templates.loadTimeout": "Template loading timed out. Try again.",
 			"templates.retry": "Reload templates",
-			"templates.category.all": "All",
+			"templates.category.all": "Built-in templates",
+"templates.category.personal": "My templates",
+"personal.deletedSelection": "The selected personal template was deleted. Choose another template.",
+"personal.upload": "Upload PPT template",
+"personal.create": "Create custom template",
+"personal.selected": "Selected",
+"personal.local": "Saved in this Desktop profile · PPTX",
+"personal.fileType": "Choose a PPTX file",
+"personal.fileTooLarge": "Personal PPTX templates cannot exceed 64 MB",
+"personal.readFailed": "Could not read the file. Choose it again.",
+"personal.duplicate": "This file is already in My templates. Select it to reuse it.",
+"personal.processing": "Processing template…",
+"personal.chooseFile": "Choose another PPT",
+"personal.preview": "Template preview",
+"personal.name": "Template name",
+"personal.previous": "Previous page",
+"personal.next": "Next page",
+"personal.save": "Save template",
+"personal.cancel": "Cancel",
+"personal.edit": "Edit template",
+"personal.editTitle": "Edit custom template",
+"personal.description": "Template description",
+"personal.descriptionPlaceholder": "Describe its style or use cases (optional)",
+"personal.update": "Save changes",
+"personal.close": "Close",
+"personal.deleteTitle": "Delete template",
+"personal.rename": "Rename",
+"personal.delete": "Delete",
+"personal.deleteHint": "Generated files are preserved when you delete a template.",
+"personal.confirmDelete": "Confirm delete",
 			"templates.category.custom": "Custom",
 			"templates.category.business": "Business",
 			"templates.category.strategy": "Strategy",
