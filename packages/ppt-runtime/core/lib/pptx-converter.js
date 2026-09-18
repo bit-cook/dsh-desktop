@@ -4,7 +4,7 @@ import yaml from "js-yaml";
 import { RECOMMENDED_ZIP_LIMITS, buildPresentation, parseZip, serializePresentation } from "@aiden0z/pptx-renderer";
 import { JSDOM } from "jsdom";
 import { containsLiteralLineBreak } from "./text-escapes.js";
-import { supplementResources, isSafeSvg } from "./pptx-resources.js";
+import { supplementResources, isSafeSvg, sanitizeOoXml, sanitizePptxFiles } from "./pptx-resources.js";
 import { flattenPptxGroups } from "./pptx-groups.js";
 import { emfToSvg } from "./emf-image.js";
 import { markSourceLayout } from "./source-layout.js";
@@ -272,7 +272,7 @@ function chartContainer(element) {
 	}
 }
 function convertedChart(node, xml, elementId, offsetX, offsetY, theme) {
-	const document = new DOMParser().parseFromString(xml, "application/xml");
+	const document = new DOMParser().parseFromString(sanitizeOoXml(xml), "application/xml");
 	if (document.querySelector("parsererror") !== null) return void 0;
 	const seriesNodes = [...document.getElementsByTagName("c:ser")];
 	if (seriesNodes.length === 0) return void 0;
@@ -451,7 +451,7 @@ function convertPptxToPptd(bytes, fileName) {
 async function convertPptxWithDomParser(bytes, fileName) {
 	const restoreDomParser = installDomParser();
 	try {
-		const files = supplementResources(await parseZip(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), RECOMMENDED_ZIP_LIMITS), bytes);
+		const files = sanitizePptxFiles(supplementResources(await parseZip(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), RECOMMENDED_ZIP_LIMITS), bytes));
 		const diagnostics = [];
         for (const [slidePath, xml] of files.slides) {
             const flattened = flattenPptxGroups(xml);

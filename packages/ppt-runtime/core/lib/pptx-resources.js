@@ -2,6 +2,57 @@ import { unzipSync } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { RECOMMENDED_ZIP_LIMITS as limits } from '@aiden0z/pptx-renderer';
 
+const EMPTY_PREFIX_XMLNS = /\sxmlns:[A-Za-z_][\w.-]*\s*=\s*(?:""|'')/g;
+const XML_MAP_KEYS = ['slides', 'slideRels', 'slideLayouts', 'slideLayoutRels', 'slideMasters', 'slideMasterRels', 'themes', 'themeOverrides', 'charts', 'chartRels', 'chartStyles', 'chartColors', 'diagramDrawings'];
+const XML_STRING_KEYS = ['contentTypes', 'presentation', 'presentationRels', 'tableStyles'];
+
+/** XML 1.0 forbids undeclaring a prefixed namespace; WPS/PowerPoint still emit xmlns:foo="". */
+export function sanitizeOoXml(xml) {
+  return String(xml ?? '').replace(EMPTY_PREFIX_XMLNS, '');
+}
+
+export function stripEmptyXmlnsDeclarations(node) {
+  if (!node) return;
+  if (node.attributes) {
+    const names = [];
+    for (const attr of node.attributes) {
+      if (attr.value === '' && (attr.prefix === 'xmlns' || attr.name.startsWith('xmlns:'))) names.push(attr.name);
+    }
+    for (const name of names) node.removeAttribute(name);
+  }
+  for (const child of node.children ?? []) stripEmptyXmlnsDeclarations(child);
+}
+
+let xmlSerializerWindow;
+
+function getXmlSerializer() {
+  if (!xmlSerializerWindow) xmlSerializerWindow = new JSDOM('').window;
+  return new xmlSerializerWindow.XMLSerializer();
+}
+
+/** Serialize OOXML without the well-formed outerHTML check that rejects empty prefix declarations. */
+export function serializeOoXmlElement(node) {
+  if (!node) return '';
+  stripEmptyXmlnsDeclarations(node);
+  return sanitizeOoXml(getXmlSerializer().serializeToString(node));
+}
+
+function sanitizeXmlMap(map) {
+  if (!map) return;
+  for (const [key, value] of map) {
+    if (typeof value === 'string') map.set(key, sanitizeOoXml(value));
+  }
+}
+
+export function sanitizePptxFiles(files) {
+  if (!files) return files;
+  for (const key of XML_STRING_KEYS) {
+    if (typeof files[key] === 'string') files[key] = sanitizeOoXml(files[key]);
+  }
+  for (const key of XML_MAP_KEYS) sanitizeXmlMap(files[key]);
+  return files;
+}
+
 /** OOXML relationships name resources; media and charts may live below the slide folder. */
 export function supplementResources(files, bytes) {
   let total = 0;

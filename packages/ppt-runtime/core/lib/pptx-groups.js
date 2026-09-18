@@ -1,3 +1,5 @@
+import { sanitizeOoXml, serializeOoXmlElement } from './pptx-resources.js';
+
 const A='http://schemas.openxmlformats.org/drawingml/2006/main';
 const child=(n,name)=>[...n.children].find(c=>c.localName===name);
 const value=(n,a,f=0)=>Number(n?.getAttribute(a)??f);
@@ -16,8 +18,10 @@ const transform=(node,group=false)=>{
  * The affine transform composes child offsets, scaling, rotation and reflection through nesting.
  */
 export function flattenPptxGroups(xml) {
- const doc=new DOMParser().parseFromString(xml,'application/xml');
- const tree=[...doc.getElementsByTagNameNS('*','spTree')][0];if(!tree)return{xml,count:0};
+ const source=sanitizeOoXml(xml);
+ const doc=new DOMParser().parseFromString(source,'application/xml');
+ if(doc.querySelector('parsererror'))return{xml:source,count:0};
+ const tree=[...doc.getElementsByTagNameNS('*','spTree')][0];if(!tree)return{xml:source,count:0};
  let count=0;
  function walk(parent,matrix,depth,groupFill){
   if(depth>64)throw new Error('PPTX 组合层级超过解析限制');
@@ -49,5 +53,7 @@ export function flattenPptxGroups(xml) {
    }
   }
  }
- walk(tree,identity,0);return{xml:doc.documentElement.outerHTML,count};
+ walk(tree,identity,0);
+ if(!count)return{xml:source,count:0};
+ return{xml:serializeOoXmlElement(doc.documentElement),count};
 }
